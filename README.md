@@ -7,7 +7,7 @@
 
 ### Virtual Environment
 
-It is recommended to create a virtual environment before installing dependencies:
+It is recommended to create a virtual environment before installing dependencies :
 
 ```bash
 python -m venv venv

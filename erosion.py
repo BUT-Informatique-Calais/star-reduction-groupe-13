@@ -55,4 +55,4 @@ cv.imwrite('./results/eroded3.png', eroded_image)
 hdul.close()
 
 
-# L érosion ne fait pas la différence entre la nébuleuse et les étoiles, elle erode les étoile smais dégrade également la nébuleuse
+# L érosion ne fait pas la différence entre la nébuleuse et les étoiles, elle erode les étoiles mais dégrade également la nébuleuse
