@@ -7,20 +7,19 @@ import os
 # -----------------------------
 # Config
 # -----------------------------
-fits_file = "./examples/HorseHead.fits"
-OUT_DIR = "./results"
-os.makedirs(OUT_DIR, exist_ok=True)
+fits_file = "./examples/test_M31_linear.fits"
+
 
 # 1) Érosion
 KERNEL_SIZE = 5
 ERODE_ITERS = 2
 
 # 2) Masque étoiles (Top-Hat)
-TOPHAT_SIZE = 21          # plus petit => moins de texture nébuleuse dans le masque
-MEDIAN_SIZE = 5           # aide beaucoup contre le bruit qui devient "étoiles"
-PERCENTILE = 99.4         # seuil auto: plus bas => + d’étoiles
+TOPHAT_SIZE = 21          
+MEDIAN_SIZE = 5          
+PERCENTILE = 99.4        
 
-# Filtre composantes (évite texture nébuleuse)
+# Filtre composantes
 MIN_AREA = 3
 MAX_AREA = 600            
 MAX_DIM  = 26             
@@ -45,7 +44,7 @@ def save_u8(name: str, img_u8: np.ndarray) -> None:
     cv.imwrite(os.path.join(OUT_DIR, name), img_u8)
 
 # -----------------------------
-# Load FITS -> image uint8 + gray
+# Load FITS -> image uint8 + gray (ROBUSTE)
 # -----------------------------
 with fits.open(fits_file) as hdul:
     data = hdul[0].data
@@ -54,42 +53,55 @@ with fits.open(fits_file) as hdul:
 if data.ndim == 3 and data.shape[0] == 3:
     data = np.transpose(data, (1, 2, 0))
 
+# --- RGB ---
 if data.ndim == 3:
+    OUT_DIR = "./results_m31"
     data01 = norm01(data)
     plt.imsave(os.path.join(OUT_DIR, "original.png"), data01)
-    image = (data01 * 255).astype(np.uint8)
-    gray = cv.cvtColor(image, cv.COLOR_RGB2GRAY)
+
+    image_rgb = (data01 * 255).astype(np.uint8)
+    image_bgr = cv.cvtColor(image_rgb, cv.COLOR_RGB2BGR)
+    gray = cv.cvtColor(image_bgr, cv.COLOR_BGR2GRAY)
+
+# --- MONO ---
 else:
+    OUT_DIR = "./results_horsehead"
     data01 = norm01(data)
     plt.imsave(os.path.join(OUT_DIR, "original.png"), data01, cmap="gray")
-    image = (data01 * 255).astype(np.uint8)
-    gray = image.copy()
 
-save_u8("gray.png", gray)
+    gray = (data01 * 255).astype(np.uint8)
+
+    image_bgr = cv.cvtColor(gray, cv.COLOR_GRAY2BGR)
+
+os.makedirs(OUT_DIR, exist_ok=True)
 
 # =========================================
 # 1) Erosion
 # =========================================
 kernel_erode = np.ones((KERNEL_SIZE, KERNEL_SIZE), np.uint8)
-Ierode = cv.erode(image, kernel_erode, iterations=ERODE_ITERS)
-save_u8("eroded.png", Ierode)
+Ierode = cv.erode(image_bgr, kernel_erode, iterations=ERODE_ITERS)
+
 
 # =========================================
 # 2) M = masque d’étoiles + flou
 # =========================================
+
+# --- Top-Hat : met en évidence les petites structures brillantes (principalement les étoiles)
 k = cv.getStructuringElement(cv.MORPH_ELLIPSE, (TOPHAT_SIZE, TOPHAT_SIZE))
 tophat = cv.morphologyEx(gray, cv.MORPH_TOPHAT, k)
-save_u8("tophat.png", tophat)
 
+
+# --- Filtre médian pour réduire le bruit
 if MEDIAN_SIZE and MEDIAN_SIZE >= 3:
     tophat_f = cv.medianBlur(tophat, MEDIAN_SIZE)
 else:
     tophat_f = tophat.copy()
-save_u8("tophat_med.png", tophat_f)
 
-# --- Seuil auto
+# --- Seuil automatique basé sur un percentile des valeurs du Top-Hat
 thr = float(np.percentile(tophat_f, PERCENTILE))
 thr = max(thr, 8.0)  # sécurité
+
+# --- Masque binaire initial
 _, mask0 = cv.threshold(tophat_f, thr, 255, cv.THRESH_BINARY)
 
 # Ouverture pour virer poussières de bruit
@@ -97,6 +109,7 @@ k3 = cv.getStructuringElement(cv.MORPH_ELLIPSE, (3, 3))
 mask0 = cv.morphologyEx(mask0, cv.MORPH_OPEN, k3, iterations=OPEN_ITERS)
 
 # --- Filtrage composantes (garde ce qui ressemble à une étoile)
+    # Regroupe les pixels blancs adjacents en "composantes connexes"
 num, labels, stats, _ = cv.connectedComponentsWithStats(mask0, connectivity=8)
 mask = np.zeros_like(mask0)
 
@@ -105,41 +118,45 @@ for i in range(1, num):
     w = stats[i, cv.CC_STAT_WIDTH]
     h = stats[i, cv.CC_STAT_HEIGHT]
 
+    # Critère de correspondance à une étoile sur la taille
     if area < MIN_AREA or area > MAX_AREA:
         continue
 
+    # Mesures géométriques de la composante (bbox + élongation)
     max_dim = max(w, h)
     min_dim = min(w, h)
     elong = max_dim / (min_dim + 1e-6)
 
+    # Critère de correspondance à une étoile sur la forme
     if max_dim > MAX_DIM:
         continue
+    
+    # Critère de correspondance à une étoile sur l'élongation
     if elong > MAX_ELONG:
         continue
-
+    # Garder les composantes valide dans le masque final
     mask[labels == i] = 255
 
-save_u8("mask_raw.png", mask)
-
-# Halo léger (optionnel)
+# Couvrir le halo des étoiles
 if DILATE_ITERS > 0:
     mask = cv.dilate(mask, k3, iterations=DILATE_ITERS)
 
-# Lissage des bords
+# Flou gaussien
 mask_blur = cv.GaussianBlur(mask, (0, 0), sigmaX=BLUR_SIGMA)
-save_u8("mask_blur.png", mask_blur)
 
+# Normalisation 
 M = mask_blur.astype(np.float32) / 255.0
 M = np.clip(M, 0.0, 1.0)
-M = (M ** GAMMA)          # renforce le centre des étoiles sans étaler partout
+M = (M ** GAMMA)          # ajuste la courbe du masque
 M = np.clip(M, 0.0, MASK_MAX)
 save_u8("mask_strength.png", (M * 255).astype(np.uint8))
 
 # =========================================
 # ÉTAPE B : 3) Ifinal = (M*Ierode) + ((1-M)*Ioriginal)
 # =========================================
-I = image.astype(np.float32)
+I = image_bgr.astype(np.float32)
 E = Ierode.astype(np.float32)
+
 
 if I.ndim == 2:
     Ifinal = (M * E) + ((1.0 - M) * I)
@@ -149,6 +166,5 @@ else:
 Ifinal = np.clip(Ifinal, 0, 255).astype(np.uint8)
 save_u8("final_star_reduced.png", Ifinal)
 
-print("✅ Étape B terminée (seuil auto + masque propre)")
+print("✅ Images générées")
 print(f"   Seuil auto utilisé (percentile {PERCENTILE}) = {thr:.2f}")
-print("   ./results : tophat.png, tophat_med.png, mask_raw.png, mask_strength.png, final_star_reduced.png")
