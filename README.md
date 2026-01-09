@@ -2,6 +2,34 @@
 
 # Project Documentation
 
+🌌 Star Reduction on Astronomical Images
+Project developed as part of SAE S3.C2
+BUT Informatique – Astronomical Image Processing
+
+Goal:
+Reduce the visibility of stars in astronomical images while preserving diffuse structures
+such as nebulae (Horsehead) and galaxies (M31).
+
+---
+
+📌 General Principle
+The project is based on a localized star reduction approach following these steps:
+
+Create an eroded version of the original image.
+Automatically generate a star mask.
+Smooth the mask edges using a Gaussian blur.
+Compute the final image by interpolation:
+
+[
+I{final} = (M \times I{erode}) + ((1 - M) \times I_{original})
+]
+
+This method allows:
+Strong attenuation of stars
+Preservation of nebulae and galaxy structures
+Smooth transitions without visible halos
+
+---
 ## Installation
 
 
@@ -44,6 +72,5 @@ Example files are located in the `examples/` directory. You can run the scripts 
 - Example 1 : `examples/HorseHead.fits` (Black and whiteFITS image file for testing)
 - Example 2 : `examples/test_M31_linear.fits` (Color FITS image file for testing)
 - Example 3 : `examples/test_M31_raw.fits` (Color FITS image file for testing)
-
 
 
