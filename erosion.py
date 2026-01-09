@@ -44,12 +44,15 @@ else:
 
 
 # Define a kernel for erosion
-kernel = np.ones((3,3), np.uint8)
+kernel = np.ones((5,5), np.uint8)
 # Perform erosion
-eroded_image = cv.erode(image, kernel, iterations=1)
+eroded_image = cv.erode(image, kernel, iterations=3)
 
 # Save the eroded image 
-cv.imwrite('./results/eroded.png', eroded_image)
+cv.imwrite('./results/eroded3.png', eroded_image)
 
 # Close the file
 hdul.close()
+
+
+# L érosion ne fait pas la différence entre la nébuleuse et les étoiles, elle erode les étoiles mais dégrade également la nébuleuse
