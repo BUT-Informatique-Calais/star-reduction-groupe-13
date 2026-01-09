@@ -74,3 +74,7 @@ Example files are located in the `examples/` directory. You can run the scripts 
 - Example 3 : `examples/test_M31_raw.fits` (Color FITS image file for testing)
 
 
+## Authors
+ MOREL Théo
+ DARTOIS Samuel
+ CESAIRE Lilian
